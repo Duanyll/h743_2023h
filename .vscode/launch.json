@@ -1,0 +1,34 @@
+{
+    "configurations": [
+        {
+            "showDevDebugOutput": "parsed",
+            "cwd": "${workspaceRoot}",
+            "executable": "./build/h743fpga.elf",
+            "name": "Debug STM32",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "preLaunchTask": "CMake: build",
+            "device": "stm32h743",
+            "configFiles": [
+                "openocd.cfg"
+            ],
+            "svdFile": "STM32H743x.svd"
+        },
+        {
+            "showDevDebugOutput": "parsed",
+            "cwd": "${workspaceRoot}",
+            "executable": "./build/h743fpga.elf",
+            "name": "Attach STM32",
+            "request": "attach",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "preLaunchTask": "CMake: build",
+            "device": "stm32h743",
+            "configFiles": [
+                "openocd.cfg"
+            ],
+            "svdFile": "STM32H743x.svd"
+        }
+    ]
+}

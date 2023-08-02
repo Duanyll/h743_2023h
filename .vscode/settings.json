@@ -1,0 +1,31 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        ".clang-format": "yaml",
+        "gamestate": "stellaris",
+        "*.m": "matlab",
+        "main.h": "c",
+        "signal.h": "c",
+        "arm_math.h": "c",
+        "screen.h": "c",
+        "app.h": "c",
+        "usart.h": "c",
+        "tim.h": "c",
+        "dac.h": "c",
+        "spi.h": "c",
+        "nn.h": "c",
+        "dac8830.h": "c",
+        "serial.h": "c",
+        "pe43711.h": "c",
+        "si5351.h": "c",
+        "ad9959.h": "c",
+        "ad7606b.h": "c",
+        "epaper.h": "c",
+        "epdfont.h": "c"
+    },
+    "editor.tabSize": 2,
+    "clangd.arguments": [
+        "-query-driver=*",
+        "-clang-tidy",
+    ]
+}
