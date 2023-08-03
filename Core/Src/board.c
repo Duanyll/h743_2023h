@@ -88,7 +88,6 @@ void BOARD_WriteSPI(uint16_t addr, uint16_t data) {
   BOARD_Delay();
 }
 
-
 void BOARD_SetTriggerFrequency(double freq) {
   uint32_t counter = (uint32_t)round(BOARD_FREQ / freq - 50);
   printf("counter: %d\n", counter);
@@ -97,7 +96,7 @@ void BOARD_SetTriggerFrequency(double freq) {
 }
 
 void BOARD_SetFrequencyA(double freq) {
-  uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 31));
+  uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 32));
   // printf("ftw: %llu\n", ftw);
   // BOARD_WriteSPI(0x02, ftw >> 32);
   BOARD_WriteSPI(0x03, ftw >> 16);
@@ -105,7 +104,7 @@ void BOARD_SetFrequencyA(double freq) {
 }
 
 void BOARD_SetFrequencyB(double freq) {
-  uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 31));
+  uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 32));
   // BOARD_WriteSPI(0x05, ftw >> 32);
   BOARD_WriteSPI(0x06, ftw >> 16);
   BOARD_WriteSPI(0x07, ftw);
@@ -123,6 +122,7 @@ void BOARD_SetPhaseA(double phase_deg) {
 
 void BOARD_SetPhaseB(double phase_deg) {
   uint64_t pow = (uint64_t)round(phase_deg / 360 * (1ull << 32));
+  // printf("pow: %llu\n", pow);
   BOARD_WriteSPI(0x0B, pow >> 16);
   BOARD_WriteSPI(0x0C, pow);
 }

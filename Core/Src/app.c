@@ -63,6 +63,7 @@ void APP_RunFrequencyCounter() {
 double APP_SineThresholdHigh = 920;
 double APP_SineThresholdLow = 860;
 double APP_TriangleThreshold = 700;
+double APP_PhaseOffset = 0;
 
 // sort float array in descending order
 int float_greater(const void *a, const void *b) {
@@ -191,7 +192,13 @@ void APP_RunSignalSeprater(BOOL debug) {
 void APP_Key0Callback(uint8_t event) {
   if (event == KEYS_EVENT_PRESS) {
     LED_On(1);
-    APP_RunFrequencyCounter();
+    // APP_RunFrequencyCounter();
+    APP_PhaseOffset += 5;
+    if (APP_PhaseOffset > 360) {
+      APP_PhaseOffset -= 360;
+    }
+    BOARD_SetPhaseA(APP_PhaseOffset);
+    BOARD_SetPhaseB(APP_PhaseOffset);
   } else if (event == KEYS_EVENT_RELEASE) {
     LED_Off(1);
   }
