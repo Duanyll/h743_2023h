@@ -57,12 +57,16 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define FPGA_CS_Pin GPIO_PIN_5
+#define FPGA_CS_GPIO_Port GPIOE
 #define KEY1_Pin GPIO_PIN_2
 #define KEY1_GPIO_Port GPIOC
 #define ADC_SCK_Pin GPIO_PIN_6
 #define ADC_SCK_GPIO_Port GPIOE
 #define KEY0_Pin GPIO_PIN_0
 #define KEY0_GPIO_Port GPIOC
+#define FPGA_RESET_Pin GPIO_PIN_1
+#define FPGA_RESET_GPIO_Port GPIOC
 #define ADC_DIO_Pin GPIO_PIN_3
 #define ADC_DIO_GPIO_Port GPIOC
 #define ADC_SLEEP_Pin GPIO_PIN_4
@@ -77,8 +81,14 @@ void Error_Handler(void);
 #define PLL_CS_GPIO_Port GPIOE
 #define PLL_SCK_Pin GPIO_PIN_11
 #define PLL_SCK_GPIO_Port GPIOE
-#define SCANNER_BUSY_Pin GPIO_PIN_2
-#define SCANNER_BUSY_GPIO_Port GPIOA
+#define FPGA_BUSY_Pin GPIO_PIN_2
+#define FPGA_BUSY_GPIO_Port GPIOA
+#define FPGA_READST_Pin GPIO_PIN_0
+#define FPGA_READST_GPIO_Port GPIOB
+#define FPGA_SDA_Pin GPIO_PIN_8
+#define FPGA_SDA_GPIO_Port GPIOE
+#define FPGA_SCLK_Pin GPIO_PIN_9
+#define FPGA_SCLK_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */
 
