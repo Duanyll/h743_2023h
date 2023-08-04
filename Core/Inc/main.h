@@ -87,7 +87,7 @@ void Error_Handler(void);
 #define FPGA_READST_GPIO_Port GPIOB
 #define FPGA_SDA_Pin GPIO_PIN_8
 #define FPGA_SDA_GPIO_Port GPIOE
-#define FPGA_SCLK_Pin GPIO_PIN_9
+#define FPGA_SCLK_Pin GPIO_PIN_13
 #define FPGA_SCLK_GPIO_Port GPIOE
 
 /* USER CODE BEGIN Private defines */

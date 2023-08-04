@@ -9,8 +9,10 @@
 #include "stm32h7xx_hal_flash.h"
 #include "stm32h7xx_hal_flash_ex.h"
 #include "stm32h7xx_hal_gpio.h"
+#include "stm32h7xx_hal_rcc.h"
 #include "stm32h7xx_hal_uart.h"
 #include "timers.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -64,6 +66,7 @@ double APP_SineThresholdHigh = 920;
 double APP_SineThresholdLow = 860;
 double APP_TriangleThreshold = 700;
 double APP_PhaseOffset = 0;
+double APP_PhaseB = 0;
 
 // sort float array in descending order
 int float_greater(const void *a, const void *b) {
@@ -88,7 +91,8 @@ float APP_GetSpectrumBackground(SIGNAL_SpectrumF32 *spectrum) {
 
 int APP_GetAmp(SIGNAL_SpectrumF32 *spectrum, float background, int idx) {
   return (spectrum->ampData[idx - 1] + spectrum->ampData[idx] +
-         spectrum->ampData[idx + 1]) - background * 3;
+          spectrum->ampData[idx + 1]) -
+         background * 3;
 }
 
 int APP_DetectPeakType(SIGNAL_SpectrumF32 *spectrum, float background,
@@ -140,13 +144,15 @@ void APP_RunSignalSeprater(BOOL debug) {
   SIGNAL_SpectrumF32 spectrum;
   SIGNAL_TimeQ15ToSpectrumF32(&timeData, &spectrum, &buffer);
   SIGNAL_PeaksF32 peaks;
+  SIGNAL_FindPeaksF32(&spectrum, &peaks, 10, 3);
   double backgound = APP_GetSpectrumBackground(&spectrum);
-  SIGNAL_FindPeaksF32(&spectrum, &peaks, backgound * 20, 3);
   if (debug) {
     printf("background: %lf\n", backgound);
   }
   double freq_a = 0;
   double freq_b = 0;
+  double phase_a = 0;
+  double phase_b = 0;
   int type_a = 0;
   int type_b = 0;
   for (int i = 0; i < peaks.count; i++) {
@@ -160,9 +166,11 @@ void APP_RunSignalSeprater(BOOL debug) {
       if (type_a == 0) {
         freq_a = peaks.peaks[i].freq;
         type_a = type;
+        phase_a = peaks.peaks[i].phase;
       } else {
         freq_b = peaks.peaks[i].freq;
         type_b = type;
+        phase_b = peaks.peaks[i].phase;
         break;
       }
     }
@@ -170,14 +178,18 @@ void APP_RunSignalSeprater(BOOL debug) {
   if (debug) {
     printf("freq_a: %.2lfkHz, type: %d\n", freq_a / 1e3, type_a);
     printf("freq_b: %.2lfkHz, type: %d\n", freq_b / 1e3, type_b);
+    printf("phase_a - phase_b: %.2lf\n", SIGNAL_PhaseSub(phase_a, phase_b));
     printf("END\n");
   }
   BOARD_SetTriggerFrequency(5000);
   if (freq_a != 0) {
     BOARD_SetFrequencyA(freq_a);
+    BOARD_SetPhaseA(SIGNAL_PhaseSub(180, phase_a));
   }
   if (freq_b != 0) {
+    APP_PhaseB = phase_b;
     BOARD_SetFrequencyB(freq_b);
+    BOARD_SetPhaseB(SIGNAL_PhaseAdd(180 - phase_b, APP_PhaseOffset));
   }
   BOARD_SetOutput(type_a, type_b);
   if (!debug) {
@@ -197,8 +209,9 @@ void APP_Key0Callback(uint8_t event) {
     if (APP_PhaseOffset > 360) {
       APP_PhaseOffset -= 360;
     }
-    BOARD_SetPhaseA(APP_PhaseOffset);
-    BOARD_SetPhaseB(APP_PhaseOffset);
+    printf("phase offset: %lf\n", APP_PhaseOffset);
+    // BOARD_SetPhaseA(APP_PhaseOffset);
+    BOARD_SetPhaseB(SIGNAL_PhaseAdd(180 - APP_PhaseB, APP_PhaseOffset));
   } else if (event == KEYS_EVENT_RELEASE) {
     LED_Off(1);
   }
@@ -250,6 +263,7 @@ void APP_Init() {
   BOARD_InitLMX2572();
   BOARD_InitAD9269();
   BOARD_ResetFPGA();
+  BOARD_SetTriggerFrequency(5000);
   RetargetInit(computer);
   UART_RxBuffer_Init(&com_buf, computer);
   UART_Open(&com_buf);

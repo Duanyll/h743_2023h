@@ -7,8 +7,11 @@
 #include "serial.h"
 #include "spi.h"
 #include "stm32h743xx.h"
+#include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_gpio.h"
 #include "stm32h7xx_hal_spi.h"
+#include "stm32h7xx_hal_tim.h"
+#include "tim.h"
 #include "timers.h"
 #include <stdio.h>
 #include <string.h>
@@ -62,6 +65,10 @@ void BOARD_ReadRawADCDataSync(int16_t *data) {
   WRITE(READST, 0);
   BOARD_Delay();
   WRITE(READST, 1);
+  BOARD_Delay();
+  while (HAL_GPIO_ReadPin(FPGA_BUSY_GPIO_Port, FPGA_BUSY_Pin) == GPIO_PIN_RESET)
+    ;
+  WRITE(READST, 0);
   HAL_SPI_Receive(&hspi2, (uint8_t *)data, 4096, 1000);
 }
 
@@ -89,7 +96,7 @@ void BOARD_WriteSPI(uint16_t addr, uint16_t data) {
 }
 
 void BOARD_SetTriggerFrequency(double freq) {
-  uint32_t counter = (uint32_t)round(BOARD_FREQ / freq - 50);
+  uint32_t counter = (uint32_t)round(BOARD_FREQ / freq - 30);
   printf("counter: %d\n", counter);
   BOARD_WriteSPI(0x00, counter >> 16);
   BOARD_WriteSPI(0x01, counter);
