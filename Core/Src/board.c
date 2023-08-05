@@ -66,8 +66,13 @@ void BOARD_ReadRawADCDataSync(int16_t *data) {
   BOARD_Delay();
   WRITE(READST, 1);
   BOARD_Delay();
-  while (HAL_GPIO_ReadPin(FPGA_BUSY_GPIO_Port, FPGA_BUSY_Pin) == GPIO_PIN_RESET)
-    ;
+  int startTick = HAL_GetTick();
+  while (HAL_GPIO_ReadPin(FPGA_BUSY_GPIO_Port, FPGA_BUSY_Pin) == GPIO_PIN_RESET) {
+    if (HAL_GetTick() - startTick > 1000) {
+      printf("FPGA timeout\n");
+      return;
+    }
+  }
   WRITE(READST, 0);
   HAL_SPI_Receive(&hspi2, (uint8_t *)data, 4096, 1000);
 }

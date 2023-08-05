@@ -4,8 +4,10 @@
 #include "led.h"
 #include "lmx2572_legacy.h"
 #include "retarget.h"
+#include "screen.h"
 #include "serial.h"
 #include "signal.h"
+#include "stm32h7xx_hal.h"
 #include "stm32h7xx_hal_flash.h"
 #include "stm32h7xx_hal_flash_ex.h"
 #include "stm32h7xx_hal_gpio.h"
@@ -19,8 +21,9 @@
 
 KEYS_Pins keys_pins;
 
-UART_RxBuffer com_buf;
+UART_RxBuffer com_buf, scr_buf;
 UART_HandleTypeDef *computer;
+UART_HandleTypeDef *screen;
 int16_t ad_data[4096];
 
 float fft_buffer[4096 * 2];
@@ -62,11 +65,32 @@ void APP_RunFrequencyCounter() {
 #define WAVE_SINE 1
 #define WAVE_TRIANGLE 2
 
+#define DEBUG_NONE 0
+#define DEBUG_MANUAL 1
+#define DEBUG_AUTO 2
+
 double APP_SineThresholdHigh = 920;
 double APP_SineThresholdLow = 860;
 double APP_TriangleThreshold = 700;
-double APP_PhaseOffset = 0;
+int APP_SamplePoints = 4096;
+BOOL APP_EnableAutoPhase = FALSE;
+double APP_PhaseA = 0;
 double APP_PhaseB = 0;
+double APP_PhaseOffset = 0;
+
+void APP_UpdatePhase() {
+  if (APP_EnableAutoPhase) {
+    BOARD_SetPhaseA(APP_PhaseA);
+    BOARD_SetPhaseB(APP_PhaseB);
+    SCREEN_PrintText("phase", "追踪");
+  } else {
+    BOARD_SetPhaseA(0);
+    BOARD_SetPhaseB(APP_PhaseOffset);
+    SCREEN_PrintText("phase", "%d", (int)(APP_PhaseOffset));
+    UART_Printf(screen, "slider.val=%d", (int)(APP_PhaseOffset));
+    SCREEN_EndLine();
+  }
+}
 
 // sort float array in descending order
 int float_greater(const void *a, const void *b) {
@@ -127,7 +151,7 @@ int APP_DetectPeakType(SIGNAL_SpectrumF32 *spectrum, float background,
   }
 }
 
-void APP_RunSignalSeprater(BOOL debug) {
+void APP_RunSignalSeprater(int debug) {
   BOARD_ReadRawADCDataSync(ad_data);
   SIGNAL_FFTBufferF32 buffer = {
       .fftBuffer = fft_buffer,
@@ -146,7 +170,7 @@ void APP_RunSignalSeprater(BOOL debug) {
   SIGNAL_PeaksF32 peaks;
   SIGNAL_FindPeaksF32(&spectrum, &peaks, 10, 3);
   double backgound = APP_GetSpectrumBackground(&spectrum);
-  if (debug) {
+  if (debug == DEBUG_MANUAL) {
     printf("background: %lf\n", backgound);
   }
   double freq_a = 0;
@@ -156,7 +180,7 @@ void APP_RunSignalSeprater(BOOL debug) {
   int type_a = 0;
   int type_b = 0;
   for (int i = 0; i < peaks.count; i++) {
-    if (debug) {
+    if (debug == DEBUG_MANUAL) {
       printf("peak %d: %.2lfkHz, amp %.2f, phase %.2f\n", i,
              peaks.peaks[i].freq / 1e3, peaks.peaks[i].amp,
              peaks.peaks[i].phase);
@@ -175,7 +199,7 @@ void APP_RunSignalSeprater(BOOL debug) {
       }
     }
   }
-  if (debug) {
+  if (debug == DEBUG_MANUAL) {
     printf("freq_a: %.2lfkHz, type: %d\n", freq_a / 1e3, type_a);
     printf("freq_b: %.2lfkHz, type: %d\n", freq_b / 1e3, type_b);
     printf("phase_a - phase_b: %.2lf\n", SIGNAL_PhaseSub(phase_a, phase_b));
@@ -184,15 +208,25 @@ void APP_RunSignalSeprater(BOOL debug) {
   BOARD_SetTriggerFrequency(5000);
   if (freq_a != 0) {
     BOARD_SetFrequencyA(freq_a);
-    BOARD_SetPhaseA(SIGNAL_PhaseSub(180, phase_a));
+    APP_PhaseA = SIGNAL_PhaseSub(180, phase_a);
+    SCREEN_PrintText("freq_a", "%.1lfkHz", freq_a / 1e3);
+    SCREEN_PrintText("type_a", "%s", type_a == WAVE_SINE ? "正弦波" : "三角波");
+  } else {
+    SCREEN_PrintText("freq_a", "0.0kHz");
+    SCREEN_PrintText("type_a", "无信号");
   }
   if (freq_b != 0) {
-    APP_PhaseB = phase_b;
     BOARD_SetFrequencyB(freq_b);
-    BOARD_SetPhaseB(SIGNAL_PhaseAdd(180 - phase_b, APP_PhaseOffset));
+    APP_PhaseB = SIGNAL_PhaseSub(180, phase_b);
+    SCREEN_PrintText("freq_b", "%.1lfkHz", freq_b / 1e3);
+    SCREEN_PrintText("type_b", "%s", type_b == WAVE_SINE ? "正弦波" : "三角波");
+  } else {
+    SCREEN_PrintText("freq_b", "0.0kHz");
+    SCREEN_PrintText("type_b", "无信号");
   }
+  APP_UpdatePhase();
   BOARD_SetOutput(type_a, type_b);
-  if (!debug) {
+  if (debug == DEBUG_AUTO) {
     UART_SendString(computer, "\xff\xff\xff\xff");
     UART_SendHex(computer, (uint8_t *)&type_a, 4);
     UART_SendHex(computer, (uint8_t *)&freq_a, 8);
@@ -210,8 +244,7 @@ void APP_Key0Callback(uint8_t event) {
       APP_PhaseOffset -= 360;
     }
     printf("phase offset: %lf\n", APP_PhaseOffset);
-    // BOARD_SetPhaseA(APP_PhaseOffset);
-    BOARD_SetPhaseB(SIGNAL_PhaseAdd(180 - APP_PhaseB, APP_PhaseOffset));
+    APP_UpdatePhase();
   } else if (event == KEYS_EVENT_RELEASE) {
     LED_Off(1);
   }
@@ -238,7 +271,7 @@ void APP_InitKeys() {
   KEYS_Init(&keys_pins);
 }
 
-void APP_PollUartCommands() {
+void APP_PollComputerCommands() {
   char data[16];
   int readCount = 0;
   readCount = UART_Read(&com_buf, data, 1, 1);
@@ -257,21 +290,89 @@ void APP_PollUartCommands() {
   }
 }
 
+void APP_PollScreenCommands() {
+  char data[16];
+  int readCount = 0;
+  readCount = UART_Read(&scr_buf, data, 1, 1);
+  if (readCount == 0)
+    return;
+  if (data[0] == SCREEN_EVENT_TOUCH) {
+    readCount = UART_Read(&scr_buf, data, 6, 1000);
+    if (readCount < 3)
+      return;
+    uint8_t page_id = data[0];
+    uint8_t item_id = data[1];
+    uint8_t event = data[2];
+    if (event != 0x01)
+      return;
+    switch (item_id) {
+    case 1:
+      LED_On(1);
+      APP_RunSignalSeprater(DEBUG_NONE);
+      LED_Off(1);
+      break;
+    case 3:
+      APP_PhaseOffset -= 25;
+    case 4:
+      APP_PhaseOffset -= 4;
+    case 5:
+      APP_PhaseOffset -= 1;
+      if (APP_PhaseOffset < 0) {
+        APP_PhaseOffset += 360;
+      }
+      APP_EnableAutoPhase = FALSE;
+      APP_UpdatePhase();
+      break;
+    case 8:
+      APP_PhaseOffset += 25;
+    case 7:
+      APP_PhaseOffset += 4;
+    case 6:
+      APP_PhaseOffset += 1;
+      if (APP_PhaseOffset > 360) {
+        APP_PhaseOffset -= 360;
+      }
+      APP_EnableAutoPhase = FALSE;
+      APP_UpdatePhase();
+      break;
+    case 18:
+      APP_EnableAutoPhase = TRUE;
+      APP_UpdatePhase();
+      break;
+    }
+  } else if (data[0] == SCREEN_EVENT_NUMBER_DATA) {
+    readCount = UART_Read(&scr_buf, data, 7, 1000);
+    if (readCount < 4)
+      return;
+    uint32_t newPhase = (*(uint32_t *)(data));
+    APP_PhaseOffset = newPhase;
+    APP_EnableAutoPhase = FALSE;
+    APP_UpdatePhase();
+  }
+}
+
 void APP_Init() {
+  LED_On(2);
+  HAL_Delay(2000);
+  LED_Off(2);
   computer = &huart1;
+  screen = &huart6;
   APP_InitKeys();
   BOARD_InitLMX2572();
   BOARD_InitAD9269();
   BOARD_ResetFPGA();
   BOARD_SetTriggerFrequency(5000);
+  SCREEN_Init(screen);
   RetargetInit(computer);
   UART_RxBuffer_Init(&com_buf, computer);
+  UART_RxBuffer_Init(&scr_buf, screen);
   UART_Open(&com_buf);
+  UART_Open(&scr_buf);
   KEYS_Start();
-  printf("Hello World!\r\n");
 }
 
 void APP_Loop() {
-  APP_PollUartCommands();
+  APP_PollComputerCommands();
+  APP_PollScreenCommands();
   KEYS_Poll();
 }

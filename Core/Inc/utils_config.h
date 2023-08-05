@@ -10,7 +10,8 @@
 #define UART_TX_BUF_SIZE 1024
 
 #define ALL_UART_PORTS(_)                                                      \
-  _(USART1)                                                                    
+  _(USART1)                                                                    \
+  _(USART6)
 
 #define ALL_TIMERS(_)                                                          \
   _(TIM2)                                                                      \

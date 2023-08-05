@@ -106,6 +106,7 @@ NVIC.TIM2_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
 NVIC.TIM6_DAC_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
 NVIC.TIM7_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
 NVIC.USART1_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
+NVIC.USART6_IRQn=true\:0\:0\:false\:false\:true\:true\:true\:true
 NVIC.UsageFault_IRQn=true\:0\:0\:false\:false\:true\:false\:false\:false
 PA13\ (JTMS/SWDIO).Mode=JTAG_5_pins
 PA13\ (JTMS/SWDIO).Signal=DEBUG_JTMS-SWDIO
