@@ -13,6 +13,7 @@
 #include "stm32h7xx_hal_tim.h"
 #include "tim.h"
 #include "timers.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -67,7 +68,8 @@ void BOARD_ReadRawADCDataSync(int16_t *data) {
   WRITE(READST, 1);
   BOARD_Delay();
   int startTick = HAL_GetTick();
-  while (HAL_GPIO_ReadPin(FPGA_BUSY_GPIO_Port, FPGA_BUSY_Pin) == GPIO_PIN_RESET) {
+  while (HAL_GPIO_ReadPin(FPGA_BUSY_GPIO_Port, FPGA_BUSY_Pin) ==
+         GPIO_PIN_RESET) {
     if (HAL_GetTick() - startTick > 1000) {
       printf("FPGA timeout\n");
       return;
@@ -100,41 +102,67 @@ void BOARD_WriteSPI(uint16_t addr, uint16_t data) {
   BOARD_Delay();
 }
 
+uint32_t BOARD_LastTriggerTick = 0;
 void BOARD_SetTriggerFrequency(double freq) {
-  uint32_t counter = (uint32_t)round(BOARD_FREQ / freq - 30);
-  printf("counter: %d\n", counter);
+  uint32_t counter = (freq == 0) ? 0 : round(BOARD_FREQ / freq - 30);
+  if (counter == BOARD_LastTriggerTick) {
+    return;
+  }
+  BOARD_LastTriggerTick = counter;
   BOARD_WriteSPI(0x00, counter >> 16);
   BOARD_WriteSPI(0x01, counter);
 }
 
+uint64_t BOARD_LastFreqA = 0;
 void BOARD_SetFrequencyA(double freq) {
   uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 32));
-  // printf("ftw: %llu\n", ftw);
-  // BOARD_WriteSPI(0x02, ftw >> 32);
+  if (ftw == BOARD_LastFreqA) {
+    return;
+  }
+  BOARD_LastFreqA = ftw;
   BOARD_WriteSPI(0x03, ftw >> 16);
   BOARD_WriteSPI(0x04, ftw);
 }
 
+uint64_t BOARD_LastFreqB = 0;
 void BOARD_SetFrequencyB(double freq) {
   uint64_t ftw = (uint64_t)round(freq / BOARD_FREQ * (1ull << 32));
-  // BOARD_WriteSPI(0x05, ftw >> 32);
+  if (ftw == BOARD_LastFreqB) {
+    return;
+  }
+  BOARD_LastFreqB = ftw;
   BOARD_WriteSPI(0x06, ftw >> 16);
   BOARD_WriteSPI(0x07, ftw);
 }
 
+uint16_t BOARD_LastOutput = 0;
 void BOARD_SetOutput(int mode_a, int mode_b) {
-  BOARD_WriteSPI(0x08, mode_a << 8 | mode_b);
+  uint16_t output = (mode_a << 8) | mode_b;
+  if (output == BOARD_LastOutput) {
+    return;
+  }
+  BOARD_LastOutput = output;
+  BOARD_WriteSPI(0x08, output);
 }
 
+uint64_t BOARD_LastPhaseA = 0;
 void BOARD_SetPhaseA(double phase_deg) {
   uint64_t pow = (uint64_t)round(phase_deg / 360 * (1ull << 32));
+  if (pow == BOARD_LastPhaseA) {
+    return;
+  }
+  BOARD_LastPhaseA = pow;
   BOARD_WriteSPI(0x09, pow >> 16);
   BOARD_WriteSPI(0x0A, pow);
 }
 
+uint64_t BOARD_LastPhaseB = 0;
 void BOARD_SetPhaseB(double phase_deg) {
   uint64_t pow = (uint64_t)round(phase_deg / 360 * (1ull << 32));
-  // printf("pow: %llu\n", pow);
+  if (pow == BOARD_LastPhaseB) {
+    return;
+  }
+  BOARD_LastPhaseB = pow;
   BOARD_WriteSPI(0x0B, pow >> 16);
   BOARD_WriteSPI(0x0C, pow);
 }

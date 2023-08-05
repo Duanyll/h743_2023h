@@ -69,27 +69,79 @@ void APP_RunFrequencyCounter() {
 #define DEBUG_MANUAL 1
 #define DEBUG_AUTO 2
 
+#define MODE_MANUAL 0
+#define MODE_CONTINUOUS 1
+#define MODE_AUTO 2
+
+double APP_SyncFreq = 5e3;
 double APP_SineThresholdHigh = 920;
 double APP_SineThresholdLow = 860;
 double APP_TriangleThreshold = 700;
-int APP_SamplePoints = 4096;
+int APP_SamplePoints = 4096; // 4096 or 1024
 BOOL APP_EnableAutoPhase = FALSE;
+int APP_WorkMode = MODE_MANUAL;
+double APP_FreqA = 0;
+double APP_FreqB = 0;
 double APP_PhaseA = 0;
 double APP_PhaseB = 0;
 double APP_PhaseOffset = 0;
 
+double APP_PhaseOffsetTable[13][3] = {
+    {20e3, 40e3, 6}, {20e3, 60e3, 11}, {20e3, 80e3, 15},  {20e3, 100e3, 20},
+    {25e3, 50e3, 5}, {25e3, 75e3, 10}, {25e3, 100e3, 13}, {30e3, 60e3, 4},
+    {30e3, 90e3, 8}, {35e3, 70e3, 5},  {40e3, 80e3, 5},   {45e3, 90e3, 5},
+    {50e3, 100e3, 5}};
+
+double APP_LookupPhaseOffset(double freqA, double freqB) {
+  // find cloest freq pair
+  int min_idx = 0;
+  double min_dist = 1e10;
+  for (int i = 0; i < 13; i++) {
+    double dist = fabs(APP_PhaseOffsetTable[i][0] - freqA) +
+                  fabs(APP_PhaseOffsetTable[i][1] - freqB);
+    if (dist < min_dist) {
+      min_dist = dist;
+      min_idx = i;
+    }
+  }
+  return APP_PhaseOffsetTable[min_idx][2];
+}
+
+double APP_LookupPhaseOffsetSingle(double freq) {
+  // find cloest freq pair
+  int min_idx = 0;
+  double min_dist = 1e10;
+  for (int i = 0; i < 4; i++) {
+    double dist = fabs(APP_PhaseOffsetTable[i][0] - freq);
+    if (dist < min_dist) {
+      min_dist = dist;
+      min_idx = i;
+    }
+  }
+  return APP_PhaseOffsetTable[min_idx][2] - 2;
+}
+
 void APP_UpdatePhase() {
   if (APP_EnableAutoPhase) {
-    BOARD_SetPhaseA(APP_PhaseA);
-    BOARD_SetPhaseB(APP_PhaseB);
+    BOARD_SetPhaseA(
+        SIGNAL_PhaseAdd(APP_PhaseA, APP_LookupPhaseOffsetSingle(APP_FreqA)));
+    BOARD_SetPhaseB(
+        SIGNAL_PhaseAdd(APP_PhaseB, APP_LookupPhaseOffsetSingle(APP_FreqB)));
     SCREEN_PrintText("phase", "追踪");
   } else {
     BOARD_SetPhaseA(0);
-    BOARD_SetPhaseB(APP_PhaseOffset);
+    double totalPhase = SIGNAL_PhaseAdd(
+        APP_PhaseOffset, APP_LookupPhaseOffset(APP_FreqA, APP_FreqB));
+    BOARD_SetPhaseB(totalPhase);
     SCREEN_PrintText("phase", "%d", (int)(APP_PhaseOffset));
     UART_Printf(screen, "slider.val=%d", (int)(APP_PhaseOffset));
     SCREEN_EndLine();
   }
+}
+
+void APP_UpdateSyncFreq() {
+  BOARD_SetTriggerFrequency(APP_SyncFreq);
+  SCREEN_PrintText("sync_freq", "%.1lfkHz", APP_SyncFreq / 1e3);
 }
 
 // sort float array in descending order
@@ -113,10 +165,14 @@ float APP_GetSpectrumBackground(SIGNAL_SpectrumF32 *spectrum) {
   return mean;
 }
 
-int APP_GetAmp(SIGNAL_SpectrumF32 *spectrum, float background, int idx) {
-  return (spectrum->ampData[idx - 1] + spectrum->ampData[idx] +
-          spectrum->ampData[idx + 1]) -
-         background * 3;
+float APP_GetAmp(SIGNAL_SpectrumF32 *spectrum, float background, int idx) {
+  float res = (spectrum->ampData[idx - 1] + spectrum->ampData[idx] +
+               spectrum->ampData[idx + 1]) -
+              background * 3;
+  if (APP_SamplePoints == 1024) {
+    res *= 4;
+  }
+  return res;
 }
 
 int APP_DetectPeakType(SIGNAL_SpectrumF32 *spectrum, float background,
@@ -160,7 +216,7 @@ void APP_RunSignalSeprater(int debug) {
   SIGNAL_TimeDataQ15 timeData = {.timeData = ad_data,
                                  .offset = 0,
                                  .stride = 1,
-                                 .points = 4096,
+                                 .points = APP_SamplePoints,
                                  .range = 2,
                                  .sampleRate = BOARD_FREQ / 40,
                                  .stripDc = TRUE,
@@ -207,7 +263,10 @@ void APP_RunSignalSeprater(int debug) {
   }
   BOARD_SetTriggerFrequency(5000);
   if (freq_a != 0) {
-    BOARD_SetFrequencyA(freq_a);
+    if (freq_a != APP_FreqA) {
+      APP_FreqA = freq_a;
+      BOARD_SetFrequencyA(freq_a);
+    }
     APP_PhaseA = SIGNAL_PhaseSub(180, phase_a);
     SCREEN_PrintText("freq_a", "%.1lfkHz", freq_a / 1e3);
     SCREEN_PrintText("type_a", "%s", type_a == WAVE_SINE ? "正弦波" : "三角波");
@@ -216,7 +275,10 @@ void APP_RunSignalSeprater(int debug) {
     SCREEN_PrintText("type_a", "无信号");
   }
   if (freq_b != 0) {
-    BOARD_SetFrequencyB(freq_b);
+    if (freq_b != APP_FreqB) {
+      APP_FreqB = freq_b;
+      BOARD_SetFrequencyB(freq_b);
+    }
     APP_PhaseB = SIGNAL_PhaseSub(180, phase_b);
     SCREEN_PrintText("freq_b", "%.1lfkHz", freq_b / 1e3);
     SCREEN_PrintText("type_b", "%s", type_b == WAVE_SINE ? "正弦波" : "三角波");
@@ -284,7 +346,7 @@ void APP_PollComputerCommands() {
   } else if (data[0] == 2) {
     APP_RunFrequencyCounter();
   } else if (data[0] == 3) {
-    APP_RunSignalSeprater(FALSE);
+    APP_RunSignalSeprater(DEBUG_AUTO);
   } else {
     printf("Unknown command: %d\n", data[0]);
   }
@@ -305,40 +367,103 @@ void APP_PollScreenCommands() {
     uint8_t event = data[2];
     if (event != 0x01)
       return;
-    switch (item_id) {
-    case 1:
-      LED_On(1);
-      APP_RunSignalSeprater(DEBUG_NONE);
-      LED_Off(1);
-      break;
-    case 3:
-      APP_PhaseOffset -= 25;
-    case 4:
-      APP_PhaseOffset -= 4;
-    case 5:
-      APP_PhaseOffset -= 1;
-      if (APP_PhaseOffset < 0) {
-        APP_PhaseOffset += 360;
+    if (page_id == 0x00) {
+      switch (item_id) {
+      case 1:
+        LED_On(1);
+        APP_RunSignalSeprater(DEBUG_NONE);
+        LED_Off(1);
+        break;
+      case 3:
+        APP_PhaseOffset -= 25;
+      case 4:
+        APP_PhaseOffset -= 4;
+      case 5:
+        APP_PhaseOffset -= 1;
+        if (APP_PhaseOffset < 0) {
+          APP_PhaseOffset += 360;
+        }
+        APP_EnableAutoPhase = FALSE;
+        APP_UpdatePhase();
+        break;
+      case 8:
+        APP_PhaseOffset += 25;
+      case 7:
+        APP_PhaseOffset += 4;
+      case 6:
+        APP_PhaseOffset += 1;
+        if (APP_PhaseOffset > 360) {
+          APP_PhaseOffset -= 360;
+        }
+        APP_EnableAutoPhase = FALSE;
+        APP_UpdatePhase();
+        break;
+      case 18:
+        APP_EnableAutoPhase = TRUE;
+        APP_UpdatePhase();
+        break;
       }
-      APP_EnableAutoPhase = FALSE;
-      APP_UpdatePhase();
-      break;
-    case 8:
-      APP_PhaseOffset += 25;
-    case 7:
-      APP_PhaseOffset += 4;
-    case 6:
-      APP_PhaseOffset += 1;
-      if (APP_PhaseOffset > 360) {
-        APP_PhaseOffset -= 360;
+    } else if (page_id == 0x01) {
+      switch (item_id) {
+      case 3:
+        APP_SyncFreq -= 500;
+        if (APP_SyncFreq < 0) {
+          APP_SyncFreq = 5000;
+        }
+        APP_UpdateSyncFreq();
+        break;
+      case 4:
+        APP_SyncFreq += 500;
+        if (APP_SyncFreq > 5000) {
+          APP_SyncFreq = 0;
+        }
+        APP_UpdateSyncFreq();
+        break;
+      case 9:
+        APP_SamplePoints = 1024;
+        SCREEN_PrintText("points", "1024");
+        break;
+      case 10:
+        APP_SamplePoints = 4096;
+        SCREEN_PrintText("points", "4096");
+        break;
+      case 13:
+        APP_WorkMode = MODE_MANUAL;
+        SCREEN_PrintText("mode", "关");
+        break;
+      case 14:
+        APP_WorkMode = MODE_CONTINUOUS;
+        SCREEN_PrintText("mode", "开");
+        break;
+      case 27:
+        APP_WorkMode = MODE_AUTO;
+        SCREEN_PrintText("mode", "自动");
+        break;
+      case 17:
+        APP_SineThresholdHigh -= 5;
+        SCREEN_PrintText("th1", "%d", (int)APP_SineThresholdHigh);
+        break;
+      case 18:
+        APP_SineThresholdHigh += 5;
+        SCREEN_PrintText("th1", "%d", (int)APP_SineThresholdHigh);
+        break;
+      case 21:
+        APP_SineThresholdLow -= 5;
+        SCREEN_PrintText("th2", "%d", (int)APP_SineThresholdLow);
+        break;
+      case 22:
+        APP_SineThresholdLow += 5;
+        SCREEN_PrintText("th2", "%d", (int)APP_SineThresholdLow);
+        break;
+      case 25:
+        APP_TriangleThreshold -= 5;
+        SCREEN_PrintText("th3", "%d", (int)APP_TriangleThreshold);
+        break;
+      case 26:
+        APP_TriangleThreshold += 5;
+        SCREEN_PrintText("th3", "%d", (int)APP_TriangleThreshold);
+        break;
       }
-      APP_EnableAutoPhase = FALSE;
-      APP_UpdatePhase();
-      break;
-    case 18:
-      APP_EnableAutoPhase = TRUE;
-      APP_UpdatePhase();
-      break;
     }
   } else if (data[0] == SCREEN_EVENT_NUMBER_DATA) {
     readCount = UART_Read(&scr_buf, data, 7, 1000);
@@ -361,7 +486,7 @@ void APP_Init() {
   BOARD_InitLMX2572();
   BOARD_InitAD9269();
   BOARD_ResetFPGA();
-  BOARD_SetTriggerFrequency(5000);
+  APP_UpdateSyncFreq();
   SCREEN_Init(screen);
   RetargetInit(computer);
   UART_RxBuffer_Init(&com_buf, computer);
@@ -375,4 +500,7 @@ void APP_Loop() {
   APP_PollComputerCommands();
   APP_PollScreenCommands();
   KEYS_Poll();
+  if (APP_WorkMode == MODE_CONTINUOUS) {
+    APP_RunSignalSeprater(DEBUG_NONE);
+  }
 }
