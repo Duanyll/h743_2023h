@@ -87,10 +87,16 @@ double APP_PhaseB = 0;
 double APP_PhaseOffset = 0;
 
 double APP_PhaseOffsetTable[13][3] = {
-    {20e3, 40e3, 6}, {20e3, 60e3, 11}, {20e3, 80e3, 15},  {20e3, 100e3, 20},
-    {25e3, 50e3, 5}, {25e3, 75e3, 10}, {25e3, 100e3, 13}, {30e3, 60e3, 4},
-    {30e3, 90e3, 8}, {35e3, 70e3, 5},  {40e3, 80e3, 5},   {45e3, 90e3, 5},
-    {50e3, 100e3, 5}};
+    {20e3, 40e3, 4},   {20e3, 60e3, 8}, {20e3, 80e3, 11}, {20e3, 100e3, 14},
+    {25e3, 50e3, 3.5}, {25e3, 75e3, 6}, {25e3, 100e3, 9}, {30e3, 60e3, 3},
+    {30e3, 90e3, 5},   {35e3, 70e3, 3}, {40e3, 80e3, 3},  {45e3, 90e3, 2},
+    {50e3, 100e3, 2}};
+
+// double APP_PhaseOffsetTable[13][3] = {
+//     {20e3, 40e3, 4},   {20e3, 60e3, 8}, {20e3, 80e3, 11}, {20e3, 100e3, 14},
+//     {25e3, 50e3, 3.5}, {25e3, 75e3, 6}, {25e3, 100e3, 9}, {30e3, 60e3, 3},
+//     {30e3, 90e3, 5},   {35e3, 70e3, 3}, {40e3, 80e3, 3},  {45e3, 90e3, 2},
+//     {50e3, 100e3, 2}};
 
 double APP_LookupPhaseOffset(double freqA, double freqB) {
   // find cloest freq pair
@@ -107,36 +113,95 @@ double APP_LookupPhaseOffset(double freqA, double freqB) {
   return APP_PhaseOffsetTable[min_idx][2];
 }
 
-double APP_LookupPhaseOffsetSingle(double freq) {
-  // find cloest freq pair
+
+double APP_PhaseOffsetTableA[16][2] = {
+  {20e3, 356}, 
+  {25e3, 358}, 
+  {30e3, 0},
+  {35e3, 1.5}, 
+  {40e3, 2.5}, 
+  {45e3, 3}, 
+  {50e3, 5}, 
+  {55e3, 5.6}, 
+  {60e3, 7}, 
+  {65e3, 7}, 
+  {70e3, 8}, 
+  {75e3, 8.9}, 
+  {80e3, 9.8}, 
+  {85e3, 10.8}, 
+  {90e3, 11.8}, 
+  {95e3, 13}
+};
+
+double APP_PhaseOffsetTableB[16][2] = {
+  {25e3, 358}, 
+  {30e3, 359},
+  {35e3, 1}, 
+  {40e3, 1}, 
+  {45e3, 2}, 
+  {50e3, 3}, 
+  {55e3, 4}, 
+  {60e3, 5}, 
+  {65e3, 6}, 
+  {70e3, 6.5}, 
+  {75e3, 8}, 
+  {80e3, 9}, 
+  {85e3, 10.5}, 
+  {90e3, 11}, 
+  {95e3, 12}, 
+  {100e3, 12.5}
+};
+
+double APP_LookupPhaseOffsetA(double freq) {
   int min_idx = 0;
   double min_dist = 1e10;
-  for (int i = 0; i < 4; i++) {
-    double dist = fabs(APP_PhaseOffsetTable[i][0] - freq);
+  for (int i = 0; i < 16; i++) {
+    double dist = fabs(APP_PhaseOffsetTableA[i][0] - freq);
     if (dist < min_dist) {
       min_dist = dist;
       min_idx = i;
     }
   }
-  return APP_PhaseOffsetTable[min_idx][2] - 2;
+  return APP_PhaseOffsetTableA[min_idx][1];
+}
+
+double APP_LookupPhaseOffsetB(double freq) {
+  int min_idx = 0;
+  double min_dist = 1e10;
+  for (int i = 0; i < 16; i++) {
+    double dist = fabs(APP_PhaseOffsetTableB[i][0] - freq);
+    if (dist < min_dist) {
+      min_dist = dist;
+      min_idx = i;
+    }
+  }
+  return APP_PhaseOffsetTableB[min_idx][1];
 }
 
 void APP_UpdatePhase() {
   if (APP_EnableAutoPhase) {
     BOARD_SetPhaseA(
-        SIGNAL_PhaseAdd(APP_PhaseA, APP_LookupPhaseOffsetSingle(APP_FreqA)));
+        SIGNAL_PhaseAdd(APP_PhaseA, APP_LookupPhaseOffsetA(APP_FreqA)));
     BOARD_SetPhaseB(
-        SIGNAL_PhaseAdd(APP_PhaseB, APP_LookupPhaseOffsetSingle(APP_FreqB)));
+        SIGNAL_PhaseAdd(APP_PhaseB, APP_LookupPhaseOffsetB(APP_FreqB)));
     SCREEN_PrintText("phase", "追踪");
+    SCREEN_PrintText("t1", "相位");
   } else {
     BOARD_SetPhaseA(0);
     double totalPhase = SIGNAL_PhaseAdd(
         APP_PhaseOffset, APP_LookupPhaseOffset(APP_FreqA, APP_FreqB));
     BOARD_SetPhaseB(totalPhase);
     SCREEN_PrintText("phase", "%d", (int)(APP_PhaseOffset));
+    SCREEN_PrintText("t1", "%.2lfus", APP_PhaseOffset / 360 / APP_FreqB * 1e6);
     UART_Printf(screen, "slider.val=%d", (int)(APP_PhaseOffset));
     SCREEN_EndLine();
   }
+
+  // BOARD_SetPhaseA(SIGNAL_PhaseAdd(APP_PhaseA, APP_PhaseOffset));
+  // BOARD_SetPhaseB(SIGNAL_PhaseAdd(APP_PhaseB, APP_PhaseOffset));
+  // SCREEN_PrintText("phase", "%d", (int)(APP_PhaseOffset));
+  // UART_Printf(screen, "slider.val=%d", (int)(APP_PhaseOffset));
+  // SCREEN_EndLine();
 }
 
 void APP_UpdateSyncFreq() {
@@ -218,7 +283,7 @@ void APP_RunSignalSeprater(int debug) {
                                  .stride = 1,
                                  .points = APP_SamplePoints,
                                  .range = 2,
-                                 .sampleRate = BOARD_FREQ / 40,
+                                 .sampleRate = BOARD_FREQ / BOARD_DOWNSAMPLE,
                                  .stripDc = TRUE,
                                  .window = SIGNAL_WINDOW_NONE};
   SIGNAL_SpectrumF32 spectrum;

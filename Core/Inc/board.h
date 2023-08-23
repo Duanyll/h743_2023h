@@ -6,6 +6,7 @@ void BOARD_InitAD9269();
 void BOARD_InitLMX2572();
 
 #define BOARD_FREQ 40.96e6
+#define BOARD_DOWNSAMPLE 10
 
 void BOARD_ResetFPGA();
 
